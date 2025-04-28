@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>⚙️ White Panda Web Flasher</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2em auto; line-height: 1.4; }
+    h1 { font-size: 1.6rem; }
+    button, input { margin: .5em 0; padding: .4em .8em; font-size: 1rem; }
+    #log { white-space: pre-wrap; background: #f4f4f4; padding: 1em; height: 200px; overflow: auto; border: 1px solid #ccc; }
+    .warning { color: #900; font-weight: bold; }
+    .note { color: #555; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <h1>⚙️ White Panda Web Flasher</h1>
+
+  <p class="warning">⚠️ You <strong>must</strong> serve this page via HTTPS (or <code>http://localhost</code>)—WebUSB only works in a secure context.</p>
+  <p class="note">
+    • Use a <strong>data-capable</strong> USB cable (USB-A→A or USB-C→A with data lines).<br>
+    • The Panda must be manually put into DFU mode:  
+    &nbsp;&nbsp;– Use a small jumper on the “DFU” pad while powering it on,  
+    &nbsp;&nbsp;– Or short the DFU-entry TEST-PIN to GND before plugging in.
+  </p>
+
+  <button id="connect">1️⃣ Connect Panda (DFU Mode)</button><br>
+  <input type="file" id="firmware" accept=".bin,.dfu"/><br>
+  <button id="flash" disabled>2️⃣ Flash Firmware</button>
+
+  <div id="log"></div>
+
+  <script type="module">
+    import DFU from 'https://cdn.jsdelivr.net/npm/dfu@1.0.2/dist/dfu.esm.min.js';
+
+    // Panda DFU VID/PID (ST STM32 DFU)
+    const VID = 0x0483, PID = 0xDF11;
+    let device = null;
+
+    const logEl = document.getElementById('log');
+    function log(msg, isError=false) {
+      const line = document.createElement('div');
+      line.textContent = msg;
+      if (isError) line.style.color = 'red';
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    document.getElementById('connect').addEventListener('click', async () => {
+      log('🔍 Checking for Panda DFU device…');
+      try {
+        // Prompt user—only DFU devices will show
+        device = await navigator.usb.requestDevice({ filters: [{ vendorId: VID, productId: PID }] });
+        log('✅ Panda DFU detected: ' + device.productName);
+        await device.open();
+        await device.selectConfiguration(1);
+        await device.claimInterface(0);
+        log('🔌 USB interface claimed.');
+        document.getElementById('flash').disabled = false;
+      } catch (e) {
+        log('❌ Cannot connect. Make sure Panda is in DFU mode and cable is data-capable.', true);
+        console.error(e);
+      }
+    });
+
+    document.getElementById('flash').addEventListener('click', async () => {
+      const fileInput = document.getElementById('firmware');
+      if (!fileInput.files.length) {
+        log('⚠️ Please select a firmware file (.bin or .dfu) first.', true);
+        return;
+      }
+
+      const arrayBuffer = await fileInput.files[0].arrayBuffer();
+      const dfu = new DFU(device);
+
+      log('⏳ Starting DFU download… this may take 30–60s');
+      try {
+        await dfu.download(new Uint8Array(arrayBuffer), {
+          transferSize: 2048,
+          interfaceNumber: 0,
+        });
+        log('🎉 Firmware flashed successfully!');
+      } catch (e) {
+        log('❌ Flash error: ' + e, true);
+        console.error(e);
+      }
+    });
+  </script>
+</body>
+</html>
